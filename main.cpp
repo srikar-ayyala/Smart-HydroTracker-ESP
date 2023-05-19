@@ -9,22 +9,22 @@
 // all data
 
 // Water level storing data
-const int readRate = 30;      // readings per minute
-const int modeCount = 5;      // readings to take mode before storing the value (in seconds or minuts)
-const int avgCount = 3;      // reading to take average value of (be in minutes)
+const int readRate = 60;      // readings per minute
+const int modeCount = 6;      // readings to take mode before storing the value (in seconds or minuts)
+const int avgCount = 5;      // reading to take average value of (be in minutes)
 const int totalReadings = (24 * 60 * readRate) / (modeCount * avgCount); // total readings in a day
+int lastReading = -1000;
 unsigned long nextBreakTime = 0;
 int modeWaterReadings[modeCount];
 int modeWaterReadingPtr = 0;
 int avgWaterReadings[avgCount][2];
-int avgWaterReadingPtr = -1; // points to data that is currently here, -1 shows that it doesn't have data
-// -1 means go to 0 next its not filled
+int avgWaterReadingPtr = -1; // points to data that is currently here, -1 shows that it doesn't have data // -1 means go to 0 next its not filled
 int waterReadings[totalReadings][2]; // 2-D array where for each reading we store the time of reading and the value
 int waterReadingPtr = 0;
 int waterReadingPtr2 = -1;
 int waterDisplayOffset = 0;
 
-const int firebaseSendingDelay = 60000;
+const int firebaseSendingDelay = 20000;
 int sendDataprevMillis = 0;
 FirebaseJson json;
 FirebaseJson dimensionJson;
@@ -32,10 +32,10 @@ FirebaseJson waterReadingsJson;
 bool sendDimensionData = false;
 
 // Water Level Reading data
-const int trigPin = 14;
-const int echoPin = 12;
+const int trigPin = 15;
+const int echoPin = 13;
 int duration, cm;
-const int tempPin = 34;
+const int tempPin = 2;
 float temperature;
 float velocity;
 int currReading = 0;
@@ -58,8 +58,10 @@ bool signUpOk = false;
 
 unsigned long timeStamp;
 
-String waterLevelPath = "/waterLevel";
-String timePath = "/timeStamp";
+String waterLevelPath = "waterLevel";
+// String waterLevelPath = "/waterLevel";
+String timePath = "timeStamp";
+// String timePath = "/timeStamp";
 String volumePath = "/volume";
 String heightPath = "/height";
 String metaDataPath = "/meterData/" + DeviceID + "/metaData";
@@ -67,8 +69,7 @@ String readingsPath = "/meterData/" + DeviceID + "/readings";
 
 // lcd data
 const int lcdRows = 4, lcdCols = 20;
-const int rsPin = 21, enPin = 5, d4Pin = 19, d5Pin = 18, d6Pin = 17, d7Pin = 16;
-// const int rsPin = 21, enPin = 5, d4Pin = 19, d5Pin = 18, d6Pin = 33, d7Pin = 23;
+const int rsPin = 4, enPin = 16, d4Pin = 17, d5Pin = 5, d6Pin = 18, d7Pin = 19;
 LiquidCrystal lcd(rsPin, enPin, d4Pin, d5Pin, d6Pin, d7Pin);
 
 // time getting data
@@ -78,20 +79,20 @@ const int daylightOffset_sec = 19800;
 
 // Input data
 const int noOfInputPins = 4;
-const int inputPin[noOfInputPins] = {4, 22, 2, 15}; // up down left right
+const int inputPin[noOfInputPins] = {33, 25, 27, 26}; // up down left right
 bool inputFlags[noOfInputPins] = {LOW, LOW, LOW, LOW};
 bool hasInputChanged = false;
 
 // Screen data
 int currScreen = 0;
 int currRow = 0, currCol = 0;
-const String menuScreen[lcdRows] = {"Wifi Settings", "Show Data", "Enter Dimensions", "Show Device ID"};
+const String menuScreen[lcdRows] = {"Wifi Settings", "Water Level", "Enter Dimensions", "Device ID"};
 
 // Wifi data
 const int wifiCheckDelay = 60000;
 int prevScanMillis = -wifiCheckDelay;
 int noOfWifiAvailable = 0;
-String setWifiSSID = "", setWifiPassword = "";
+String setWifiSSID = "", setWifiPassword = "vnax4735";
 
 int wifiDisplayOffset = 0;
 
@@ -101,9 +102,9 @@ const String splCharStr = "!@#$%^&*()-_=+[]{};:\"',<.>/?";
 
 // dimension information
 const int noOfDimension = 2;
-int dimension[noOfDimension] = {0, 0};
-char volumeEnter[5] = {'0', '0', '0', '0', '0'};
-char heightEnter[5] = {'0', '0', '0', '0', '0'};
+int dimension[noOfDimension] = {1000, 100};
+char volumeEnter[5] = {'0', '1', '0', '0', '0'};
+char heightEnter[5] = {'0', '0', '1', '0', '0'};
 
 // defining functions at the top so that all the function below can use these two
 void ShowCurrScreen();
@@ -170,8 +171,24 @@ void ConfigTime()
 
 void ConnectToWifi()
 {
-  WiFi.begin(setWifiSSID.c_str(), setWifiPassword.c_str());
-  ChangeScreen(6);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(setWifiSSID);
+  lcd.setCursor(1, 1);
+  lcd.print(setWifiPassword);
+  Serial.print(setWifiSSID);
+  Serial.print(" ");
+  Serial.println(setWifiPassword);
+  while(1) {
+    SetInputs();
+    if(inputFlags[2]) {
+      WiFi.begin(setWifiSSID.c_str(), setWifiPassword.c_str());
+      ChangeScreen(6);
+      return;
+    }
+    delay(500);
+  }
+  // ChangeScreen(6);
 }
 
 // Firebase functions
@@ -179,21 +196,57 @@ void ConnectToWifi()
 void pushWaterDataToFirebase()
 {
   if(Firebase.ready() && signUpOk) {
-    while(!Firebase.RTDB.updateNode(&fbdo, readingsPath.c_str(), &waterReadingsJson)) delay(1000);
-    waterReadingsJson.clear();
+    int count = 0;
+    FirebaseJson temp;
+    String a = readingsPath;
+    // String a = readingsPath + "/abc";
+    String b = "12";
+    temp.set(b.c_str(), 52);
+    b = "13";
+    temp.set(b.c_str(), 55);
+    // Firebase.RTDB.setJSON(&fbdo, a.c_str(), &temp);
+    // Firebase.RTDB.updateNode(&fbdo, a.c_str(), &temp);
+    bool isSent = false;
+    while(count < 2) {
+      // isSent = Firebase.RTDB.updateNode(&fbdo, a.c_str(), &temp);
+      isSent = Firebase.RTDB.updateNode(&fbdo, a.c_str(), &waterReadingsJson);
+      if(isSent) break;
+      delay(500);
+      count++;
+    }
+    if(isSent) waterReadingsJson.clear();
+    // if(isSent) a.clear();
+    count = 0;
+    isSent = false;
+    
     if(sendDimensionData) {
       delay(500);
-      while(!Firebase.RTDB.setJSON(&fbdo, metaDataPath.c_str(), &dimensionJson)) delay(1000);
-      sendDimensionData = false;
+
+      while(count < 2) {
+        isSent = Firebase.RTDB.setJSON(&fbdo, metaDataPath.c_str(), &dimensionJson);
+        if(isSent) break;
+        delay(500);
+        count++;
+      }
+      // while(!Firebase.RTDB.setJSON(&fbdo, metaDataPath.c_str(), &dimensionJson)) delay(1000);
+      // Firebase.RTDB.setJSON(&fbdo, metaDataPath.c_str(), &dimensionJson);
+      if(isSent) {
+        sendDimensionData = false;
+        dimensionJson.clear();
+      }
     }
   }
 }
 
 void PushDataToFirebaseArray(int waterLevel)
 {
-  json.set(waterLevelPath.c_str(), String(waterLevel));
-  json.set(timePath.c_str(), String(timeStamp));
-  waterReadingsJson.set(String(timeStamp), json);
+  if(waterLevel <= dimension[1]) {
+  // if(abs(lastReading - GetCurrVolume(waterLevel)) >= 8 && /waterLevel <= dimension[1]) {
+    // lastReading = GetCurrVolume(waterLevel);
+    json.set(waterLevelPath.c_str(), String(waterLevel));
+    json.set(timePath.c_str(), String(timeStamp));
+    waterReadingsJson.set(String(timeStamp), json);
+  }
   if (millis() >= sendDataprevMillis + firebaseSendingDelay)
   {
     sendDataprevMillis = millis();
@@ -218,15 +271,15 @@ void ConnectToFirebase()
 
     signUpOk = true;
 
-    if(waterReadingPtr > 0) {
-      waterReadingsJson.clear();
-      for(int i=0; i<waterReadingPtr; i++) {
-          json.set(waterLevelPath.c_str(), String(waterReadings[i][1]));
-          json.set(timePath.c_str(), String(waterReadings[i][0]));
-          waterReadingsJson.set(String(waterReadings[i][0]), json);
-      }
-      pushWaterDataToFirebase();
-    }
+    // if(waterReadingPtr > 0) {
+    //   waterReadingsJson.clear();
+    //   for(int i=0; i<waterReadingPtr; i++) {
+    //       json.set(waterLevelPath.c_str(), String(waterReadings[i][1]));
+    //       json.set(timePath.c_str(), String(waterReadings[i][0]));
+    //       waterReadingsJson.set(String(waterReadings[i][0]), json);
+    //   }
+    //   pushWaterDataToFirebase();
+    // }
 }
 
 // ultrasonic sensor
@@ -252,6 +305,8 @@ int GetCurrVolume(int h)
 void ResolveDimensionInputs()
 {
   dimensionJson.clear();
+  lcd.clear();
+  lcd.print("Calculating...");
   for (int k = 0; k < noOfDimension; k++)
   {
     int x = 0, pow = 1;
@@ -270,7 +325,6 @@ int GetWaterReading()
 {
   temperature = analogRead(tempPin) / 2.048;
   velocity = 331 * sqrt((273+temperature)/273);
-  // velocity = 341.0;
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -333,8 +387,8 @@ void StoreWaterReading(int currReading)
         avg += avgWaterReadings[i][1];
       avg /= avgCount;
       waterReadings[waterReadingPtr][1] = avg;
-      Serial.print("waterR: ");
-      Serial.println(avg);
+      // Serial.print("waterR: ");
+      // Serial.println(avg);
 
       SetNextBreakTime();
       waterReadingPtr++;
@@ -345,17 +399,18 @@ void StoreWaterReading(int currReading)
       }
     }
 
-    Serial.print("avg: ");
-    Serial.println(mode);
+    // Serial.print("avg: ");
+    // Serial.println(mode);
 
     avgWaterReadingPtr++;
     avgWaterReadings[avgWaterReadingPtr][0] = timeStamp;
     avgWaterReadings[avgWaterReadingPtr][1] = mode;
     PushDataToFirebaseArray(mode);
+    if (currScreen == 2) {
+      ChangeScreen(2);
+    }
   }
   // to update the screen
-  if (currScreen == 2)
-    ChangeScreen(2);
   Serial.println("");
 }
 
@@ -368,6 +423,11 @@ void ReadWaterLevel()
   prevReadingMillis = millis();
   currReading = GetWaterReading();
   StoreWaterReading(currReading);
+
+  // if(abs(lastReading - currReading) >= 10) {
+  //   lastReading = currReading;
+  //   StoreWaterReading(currReading);
+  // }
 }
 
 // Screen functions
@@ -443,7 +503,7 @@ void WifiStatusScreen()
     delay(100);
   }
 
-  lcd.clear();
+  // lcd.clear();
   lcd.setCursor(0, 0);
   if (WiFi.status() != WL_CONNECTED)
   {
@@ -479,6 +539,11 @@ void WifiStatusScreen()
 // used by going through show wifi screen
 void EnterPasswordScreen()
 {
+  setWifiPassword = "vnax4735";
+  if(setWifiPassword != "") {
+    ConnectToWifi();
+    return;
+  }
   if (currCol == 0 && inputFlags[0])
   {
     ChangeScreen(0);
@@ -971,58 +1036,58 @@ void SetInputs()
 // setup
 
 byte down_arrow[8] = {
-	0b00000,
-	0b00000,
-	0b00000,
-	0b00000,
-	0b00000,
-	0b10001,
-	0b01010,
-	0b00100
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b10001,
+  0b01010,
+  0b00100
 };
 
 byte up_select_arrow[8] = {
-	0b00100,
-	0b01110,
-	0b10101,
-	0b00100,
-	0b00100,
-	0b00100,
-	0b00100,
-	0b00100
+  0b00100,
+  0b01110,
+  0b10101,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100
 };
 
 byte tick_mark[8] = {
-	0b00000,
-	0b00000,
-	0b00001,
-	0b00010,
-	0b10100,
-	0b01000,
-	0b00000,
-	0b00000
+  0b00000,
+  0b00000,
+  0b00001,
+  0b00010,
+  0b10100,
+  0b01000,
+  0b00000,
+  0b00000
 };
 
 byte up_down_arrow[8] = {
-	0b00100,
-	0b01110,
-	0b10101,
-	0b00100,
-	0b00100,
-	0b10101,
-	0b01110,
-	0b00100
+  0b00100,
+  0b01110,
+  0b10101,
+  0b00100,
+  0b00100,
+  0b10101,
+  0b01110,
+  0b00100
 };
 
 byte right_select_arrow[8] = {
-	0b00000,
-	0b00100,
-	0b00010,
-	0b11111,
-	0b00010,
-	0b00100,
-	0b00000,
-	0b00000
+  0b00000,
+  0b00100,
+  0b00010,
+  0b11111,
+  0b00010,
+  0b00100,
+  0b00000,
+  0b00000
 };
 
 void setup()
@@ -1079,3 +1144,7 @@ void loop()
   ResolveInputs();
   delay(200);
 }
+
+// fix don't send data if it is negative or has large drop
+// increase the rate to 120 decrease delay to 10 increase firebase stuff
+// check reason for sudden hang.
